@@ -1,4 +1,8 @@
-1)Spliting word
+
+
+---1)Spliting word
+
+--word count on Spark-Scala application with unit test
 
 $cat sparkdata.txt
 
