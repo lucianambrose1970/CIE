@@ -1,0 +1,263 @@
+1)Spliting word
+
+$cat sparkdata.txt
+
+$spark_shell
+
+scala> val data =sc.textfile("sparkdata.txt")
+scala> data.collect;
+
+scala>val splitdata =data.flatmap(line =>line.split(" "));
+
+scala> splitdata.collect;
+
+scala> val mapdata = splitdata.map(word => (word,1));  
+
+scala> mapdata.collect;  
+
+scala> val reducedata = mapdata.reduceByKey(_+_);  
+
+scala> reducedata.collect;  
+
+
+Top 10 Movies 
+
+val ratingsRDD=sc.textFile("../../Movielens/ratings.dat")
+val movies=ratingsRDD.map(line=>line.split("::")(1).toInt)
+val movies_pair=movies.map(mv=>(mv,1))
+
+val movies_count=movies_pair.reduceByKey((x,y)=>x+y)
+val movies_sorted=movies_count.sortBy(x=>x._2,false,1)
+
+val mv_top10List=movies_sorted.take(10).toList
+val mv_top10RDD=sc.parallelize(mv_top10List)
+
+val mv_names=sc.textFile("../../Movielens/movies.dat").map(line=>(line.split("::")(0).toInt,line.split("::")(1)))
+val join_out=mv_names.join(mv_top10RDD)
+join_out.sortBy(x=>x._2._2,false).map(x=> x._1+","+x._2._1+","+x._2._2).repartition(1).saveAsTextFile("Top-10-CSV")
+System.exit(0)
+
+
+Output
+
+2858,American Beauty (1999),3428
+260,Star Wars: Episode IV - A New Hope (1977),2991
+1196,Star Wars: Episode V - The Empire Strikes Back (1980),2990
+1210,Star Wars: Episode VI - Return of the Jedi (1983),2883
+480,Jurassic Park (1993),2672
+2028,Saving Priva
+
+te Ryan (1998),2653
+589,Terminator 2: Judgment Day (1991),2649
+2571,Matrix, The (1999),2590
+1270,Back to the Future (1985),2583
+593,Silence of the Lambs, The (1991),2578
+
+
+
+2)Latest movies 
+
+val movies_rdd=sc.textFile("../../Movielens/movies.dat")
+val movie_nm=movies_rdd.map(lines=>lines.split("::")(1))
+val year=movie_nm.map(lines=>lines.substring(lines.lastIndexOf("(")+1,lines.lastIndexOf(")")))
+val latest=year.max
+val latest_movies=movie_nm.filter(lines=>lines.contains("("+latest+")")).saveAsTextFile("result")
+System.exit(0)
+
+
+
+3) Movies in each Genre
+val movies_rdd=sc.textFile("../../Movielens/movies.dat")
+val genre=movies_rdd.map(lines=>lines.split("::")(2))
+val flat_genre=genre.flatMap(lines=>lines.split("\\|"))
+val genre_kv=flat_genre.map(k=>(k,1))
+val genre_count=genre_kv.reduceByKey((k,v)=>(k+v))
+val genre_sort= genre_count.sortByKey()
+genre_sort.saveAsTextFile("result-csv")
+System.exit(0)
+
+
+Output
+
+(Action,503)
+(Adventure,283)
+(Animation,105)
+(Children's,251)
+(Comedy,1200)
+(Crime,211)
+(Documentary,127)
+(Drama,1603)
+(Fantasy,68)
+(Film-Noir,44)
+(Horror,343)
+(Musical,114)
+(Mystery,106)
+(Romance,471)
+(Sci-Fi,276)
+(Thriller,492)
+(War,143)
+(Western,68)
+
+
+distinct Genres
+
+val movies_rdd=sc.textFile("../../Movielens/movies.dat")
+val genres=movies_rdd.map(lines=>lines.split("::")(2))
+val testing=genres.flatMap(line=>line.split('|'))
+val genres_distinct_sorted=testing.distinct().sortBy(_(0))
+genres_distinct_sorted.saveAsTextFile("result")
+System.exit(0)
+
+Distinct gen res.
+val movies_rdd=sc.textFile("../../Movielens/movies.dat")
+val genres=movies_rdd.map(lines=>lines.split("::")(2))
+val testing=genres.flatMap(line=>line.split('|'))
+val genres_distinct_sorted=testing.distinct().sortBy(_(0))
+genres_distinct_sorted.saveAsTextFile("result")
+System.exit(0)
+
+Ratings movies 
+
+import org.apache.spark.sql.types.{StructType, StructField, StringType, IntegerType, DateType};
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.DataFrame
+
+val logSchema = StructType(Array(
+    StructField("user_ID", IntegerType, nullable=true),
+    StructField("movie_ID", IntegerType, nullable=true),
+    StructField("rating", IntegerType, nullable=true),
+    StructField("timestamp", StringType, nullable=true)
+));
+
+val rdd = ratings.map(x => Row(x.user_ID, x.movie_ID, x.rating, x.timestamp))
+val df = spark.createDataFrame(rdd, logSchema)
+
+df.createOrReplaceTempView("rating")
+
+df.count
+
+
+
+
+--- most popular movies
+SELECT title, AVG(stars) AS average
+FROM Movie
+INNER JOIN Rating USING(mId)
+GROUP BY mId
+HAVING average = (
+  SELECT MAX(average_stars)
+  FROM (
+    SELECT title, AVG(stars) AS average_stars
+    FROM Movie
+    INNER JOIN Rating USING(mId)
+    GROUP BY mId
+  )
+);
+
+Least popular movies 
+ 11. Find the movie(s) with the lowest average rating. Return the movie title(s) and average rating.
+
+SELECT title, AVG(stars) AS average
+FROM Movie
+INNER JOIN Rating USING(mId)
+GROUP BY mId
+HAVING average = (
+  SELECT MIN(average_stars)
+  FROM (
+    SELECT title, AVG(stars) AS average_stars
+    FROM Movie
+    INNER JOIN Rating USING(mId)
+    GROUP BY mId
+  )
+);
+
+
+sparkdatalake code
+
+// 2nd method is to read the file directly into a dataFrame and create a temp view
+spark.read.textFile("../../Movielens/movies.dat").createOrReplaceTempView("movies_staging");
+spark.read.textFile("../../Movielens/ratings.dat").createOrReplaceTempView("ratings_staging");
+spark.read.textFile("../../Movielens/users.dat").createOrReplaceTempView("users_staging");
+// Create a database to store the tables
+spark.sql("drop database if exists sparkdatalake cascade")
+spark.sql("create database sparkdatalake");
+// Make appropriate schemas for them
+// movies
+spark.sql(""" Select 
+split(value,'::')[0] as movieid,
+split(value,'::')[1] as title,
+substring(split(value,'::')[1],length(split(value,'::')[1])-4,4) as year,
+split(value,'::')[2] as genre 
+from movies_staging """).write.mode("overwrite").saveAsTable("sparkdatalake.movies");
+// users
+spark.sql(""" Select
+split(value,'::')[0] as userid,
+split(value,'::')[1] as gender,
+split(value,'::')[2] as age,
+split(value,'::')[3] as occupation,
+split(value,'::')[4] as zipcode
+from users_staging """).write.mode("overwrite").saveAsTable("sparkdatalake.users");
+// ratings
+spark.sql(""" Select
+split(value,'::')[0] as userid,
+split(value,'::')[1] as movieid,
+split(value,'::')[2] as rating,
+split(value,'::')[3] as timestamp
+from ratings_staging """).write.mode("overwrite").saveAsTable("sparkdatalake.ratings");
+System.exit(0) 
+
+Rating of Movies
+
+spark.sql("use sparkdatalake")
+spark.sql("""Select rating as Ratings,count(rating) as Number_of_Movies_per_rating
+from sparkdatalake.ratings 
+group by rating
+order by rating asc""").repartition(1).write.format("csv").option("header","true").save("result")
+System.exit(0) 
+Total rating per movies 
+spark.sql("""Select movieid,
+sum(rating) as Total_ratings,
+from sparkdatalake.ratings 
+group by movieid
+order by cast(movieid as int) asc
+""").repartition(1).write.format("csv").option("header","true").save("result")
+System.exit(0)
+// 2nd method is to read the file directly into a dataFrame and create a temp view
+spark.read.textFile("../../Movielens/movies.dat").createOrReplaceTempView("movies_staging");
+spark.read.textFile("../../Movielens/ratings.dat").createOrReplaceTempView("ratings_staging");
+spark.read.textFile("../../Movielens/users.dat").createOrReplaceTempView("users_staging");
+// Create a database to store the tables
+spark.sql("drop database if exists sparkdatalake cascade")
+spark.sql("create database sparkdatalake");
+// Make appropriate schemas for them
+// movies
+spark.sql(""" Select 
+split(value,'::')[0] as movieid,
+split(value,'::')[1] as title,
+substring(split(value,'::')[1],length(split(value,'::')[1])-4,4) as year,
+split(value,'::')[2] as genre 
+from movies_staging """).write.mode("overwrite").saveAsTable("sparkdatalake.movies");
+// users
+spark.sql(""" Select
+split(value,'::')[0] as userid,
+split(value,'::')[1] as gender,
+split(value,'::')[2] as age,
+split(value,'::')[3] as occupation,
+split(value,'::')[4] as zipcode
+from users_staging """).write.mode("overwrite").saveAsTable("sparkdatalake.users");
+// ratings
+spark.sql(""" Select
+split(value,'::')[0] as userid,
+split(value,'::')[1] as movieid,
+split(value,'::')[2] as rating,
+split(value,'::')[3] as timestamp
+from ratings_staging """).write.mode("overwrite").saveAsTable("sparkdatalake.ratings");
+System.exit(0) 
+
+
+
+
+Movies per year
+spark.sql("Select distinct(year),count(year) as Number_of_Movies from sparkdatalake.movies group by year").repartition(1).write.format("csv").option("header","true").save("result")
+System.exit(0)
+
